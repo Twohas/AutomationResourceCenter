@@ -1,18 +1,32 @@
 import os
 import google.generativeai as genai
-from github import Github
+from github import Github, Auth
 
 # 1. 설정값 가져오기
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 github_token = os.getenv("GITHUB_TOKEN")
 repo_name = os.getenv("GITHUB_REPOSITORY")
-pr_number = int(os.getenv("PR_NUMBER"))
+pr_number_str = os.getenv("PR_NUMBER")
+
+# ✅ 디버깅용: 키가 제대로 들어왔는지 확인 (보안상 앞 4자리만 출력)
+if gemini_api_key:
+    print(f"🔑 Gemini Key Check: {gemini_api_key[:4]}****")
+else:
+    print("❌ Error: GEMINI_API_KEY is None!")
+    exit(1) # 강제 종료
+
+if not pr_number_str:
+    print("❌ Error: PR_NUMBER is missing!")
+    exit(1)
+
+pr_number = int(pr_number_str)
 
 # 2. Gemini 설정 (Gemini 1.5 Flash 모델 사용)
 genai.configure(api_key=gemini_api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 # 3. GitHub PR 정보 가져오기
+auth = Auth.Token(github_token)
 g = Github(github_token)
 repo = g.get_repo(repo_name)
 pr = repo.get_pull(pr_number)
