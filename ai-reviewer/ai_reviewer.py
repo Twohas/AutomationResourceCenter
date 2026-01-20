@@ -1,4 +1,6 @@
 import os
+import json
+import re
 import google.generativeai as genai
 from github import Github, Auth
 
@@ -8,74 +10,112 @@ github_token = os.getenv("GITHUB_TOKEN")
 repo_name = os.getenv("GITHUB_REPOSITORY")
 pr_number_str = os.getenv("PR_NUMBER")
 
-# ✅ 디버깅용: 키가 제대로 들어왔는지 확인 (보안상 앞 4자리만 출력)
-if gemini_api_key:
-    print(f"🔑 Gemini Key Check: {gemini_api_key[:4]}****")
-else:
-    print("❌ Error: GEMINI_API_KEY is None!")
-    exit(1) # 강제 종료
-
-if not pr_number_str:
-    print("❌ Error: PR_NUMBER is missing!")
+# 유효성 검사
+if not gemini_api_key:
+    print("❌ Error: GEMINI_API_KEY is missing")
     exit(1)
-
-pr_number = int(pr_number_str)
+if not pr_number_str:
+    print("❌ Error: PR_NUMBER is missing")
+    exit(1)
 
 # 2. Gemini 설정 (Gemini 1.5 Flash 모델 사용)
 genai.configure(api_key=gemini_api_key)
-available_models = []
-try:
-    for m in genai.list_models():
-        # 'generateContent' 기능을 지원하는 모델만 출력
-        if 'generateContent' in m.supported_generation_methods:
-            print(f" - {m.name}")
-            available_models.append(m.name)
-except Exception as e:
-    print(f"⚠️ 모델 목록 조회 중 에러 발생: {e}")
-
-print("---------------------------------------------------------\n")
-model = genai.GenerativeModel('gemini-2.5-flash')
-
-# 3. GitHub PR 정보 가져오기
+model = genai.GenerativeModel("gemini-2.5-flash", generation_config={"response_mime_type": "application/json"})
 auth = Auth.Token(github_token)
-g = Github(github_token)
+g = Github(auth=auth)
 repo = g.get_repo(repo_name)
-pr = repo.get_pull(pr_number)
+pr = repo.get_pull(int(pr_number_str))
+last_commit = list(pr.get_commits())[-1]
 
-# 4. 변경된 파일(Diff) 가져오기
-diff_content = ""
+print("🚀 리뷰 시작 (Model: gemini-1.5-flash)")
+
+# 3. 변경된 파일별로 리뷰 데이터 수집
+review_comments = []
+
 for file in pr.get_files():
-    # 삭제된 파일이나 너무 큰 파일은 건너뛰기 가능
-    if file.status == "removed":
+    if file.status == "removed" or file.patch is None:
         continue
     
-    diff_content += f"\n\n--- File: {file.filename} ---\n"
-    diff_content += file.patch if file.patch else "(No content change)"
+    print(f"🔍 Analyzing: {file.filename}")
 
-# 5. Gemini에게 리뷰 요청할 프롬프트 작성
-prompt = f"""
-너는 시니어 iOS 개발자야. 아래 변경된 코드(Diff)를 보고 코드 리뷰를 해줘.
-리뷰 강도는 '높음' 수준으로 해줘
-반드시 한국어로 답변하고, 다음 형식을 지켜줘:
+    # 프롬프트 (CodeRabbit 스타일)
+    prompt = f"""
+    너는 구글, 애플 출신의 시니어 개발자야. 아래 제공되는 Git Diff 코드를 분석해서 코드 리뷰를 해줘.
+    
+    **파일명:** {file.filename}
+    
+    **목표:**
+    1. 버그, 성능 이슈, 스타일 가이드 위반, 안티 패턴을 찾아내.
+    2. 칭찬할 점이 있다면 칭찬해.
+    3. 중요하지 않은 변경사항은 무시해. (리뷰 노이즈 최소화)
 
-1. **요약**: 변경 사항을 한 줄로 요약
-2. **주요 변경점**: 핵심적인 변경 사항 설명
-3. **개선 제안**: 버그 가능성, 성능 문제, 혹은 Swift 스타일 가이드 위반 사항이 있다면 구체적으로 지적 (없다면 생략 가능)
-4. **칭찬**: 잘 짜여진 코드가 있다면 언급
+    **출력 형식 (JSON List):**
+    반드시 아래 JSON 구조의 리스트로만 응답해. 마크다운 코드블럭을 쓰지 말고 순수 JSON만 출력해.
+    
+    [
+      {{
+        "line": <int: 이슈가 발견된 변경 후 파일의 라인 번호>,
+        "category": "<string: '이슈' | '제안' | '칭찬'>",
+        "severity": "<string: 'Critical' | ''Major' | 'Minor' | 'Info'>",
+        "message": "<string: 리뷰 내용 (한국어)>"
+      }}
+    ]
 
---- 변경된 코드 ---
-{diff_content[:50000]} 
-""" 
-# (참고: Gemini는 입력량이 많지만, 혹시 몰라 3만 자로 자름. 필요 시 조절 가능)
+    **코멘트 스타일 가이드:**
+    - CodeRabbit 스타일을 따라해.
+    - 친절하지만 명확하게 설명해.
 
-try:
-    # 6. Gemini에게 질문
-    response = model.generate_content(prompt)
-    review_result = response.text
+    --- Git Diff ---
+    {file.patch}
+    """
 
-    # 7. PR에 댓글 달기
-    pr.create_issue_comment(f"## 🤖 Gemini AI Code Review\n\n{review_result}")
-    print("✅ 리뷰 등록 완료!")
+    try:
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+        
+        if response_text.startswith("```json"):
+            response_text = response_text[7:-3]
+        elif response_text.startswith("```"):
+            response_text = response_text[3:-3]
+            
+        comments_data = json.loads(response_text)
 
-except Exception as e:
-    print(f"❌ 에러 발생: {e}")
+        for item in comments_data:
+            icon = "📝"
+            if item['category'] == '이슈': icon = "⚠️"
+            elif item['category'] == '칭찬': icon = "🙌"
+            elif item['category'] == '제안': icon = "💡"
+
+            severity_icon = "⚪️"
+            if item['severity'] == 'Critical': severity_icon = "🔥" # Critical은 불꽃 아이콘
+            elif item['severity'] == 'Major': severity_icon = "🔴"
+            elif item['severity'] == 'Minor': severity_icon = "🟡"
+
+            body = f"### {icon} {item['category']} | {severity_icon} {item['severity']}\n\n{item['message']}"
+
+            review_comments.append({
+                "path": file.filename,
+                "line": int(item['line']),
+                "body": body
+            })
+
+    except Exception as e:
+        print(f"⚠️ {file.filename} 처리 중 에러: {e}")
+        continue
+
+# 4. 리뷰 등록
+if review_comments:
+    try:
+        print(f"📨 총 {len(review_comments)}개의 코멘트를 등록합니다...")
+        pr.create_review(
+            commit=last_commit,
+            body="## 🤖 Gemini AI Code Review\n리뷰가 도착했습니다! 코드를 확인해주세요.",
+            event="COMMENT",
+            comments=review_comments
+        )
+        print("✅ 인라인 리뷰 등록 완료!")
+        
+    except Exception as e:
+        print(f"❌ 리뷰 등록 실패: {e}")
+else:
+    print("✅ 발견된 이슈가 없습니다.")
