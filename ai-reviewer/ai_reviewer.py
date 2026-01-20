@@ -23,6 +23,17 @@ pr_number = int(pr_number_str)
 
 # 2. Gemini 설정 (Gemini 1.5 Flash 모델 사용)
 genai.configure(api_key=gemini_api_key)
+available_models = []
+try:
+    for m in genai.list_models():
+        # 'generateContent' 기능을 지원하는 모델만 출력
+        if 'generateContent' in m.supported_generation_methods:
+            print(f" - {m.name}")
+            available_models.append(m.name)
+except Exception as e:
+    print(f"⚠️ 모델 목록 조회 중 에러 발생: {e}")
+
+print("---------------------------------------------------------\n")
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 # 3. GitHub PR 정보 가져오기
