@@ -34,7 +34,7 @@ except Exception as e:
     print(f"⚠️ 모델 목록 조회 중 에러 발생: {e}")
 
 print("---------------------------------------------------------\n")
-model = genai.GenerativeModel('gemini-2.0-flash-lite')
+model = genai.GenerativeModel('gemini-3-flash')
 
 # 3. GitHub PR 정보 가져오기
 auth = Auth.Token(github_token)
