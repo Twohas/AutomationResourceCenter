@@ -20,7 +20,10 @@ if not pr_number_str:
 
 # 2. Gemini 설정 (Gemini 1.5 Flash 모델 사용)
 genai.configure(api_key=gemini_api_key)
-model = genai.GenerativeModel("gemini-2.5-flash", generation_config={"response_mime_type": "application/json"})
+
+model_json = genai.GenerativeModel("gemini-2.5-flash", generation_config={"response_mime_type": "application/json"})
+model_text = genai.GenerativeModel("gemini-1.5-flash")
+
 auth = Auth.Token(github_token)
 g = Github(auth=auth)
 repo = g.get_repo(repo_name)
@@ -31,14 +34,22 @@ print("🚀 리뷰 시작 (Model: gemini-1.5-flash)")
 
 # 3. 변경된 파일별로 리뷰 데이터 수집
 review_comments = []
+all_diffs_context = "" # 요약을 위해 전체 코드를 모을 변수
 
+# ------------------------------------------------------------------
+# 단계 1: 파일별 루프 (인라인 리뷰 수집 + 전체 Diff 모으기)
+# ------------------------------------------------------------------
 for file in pr.get_files():
     if file.status == "removed" or file.patch is None:
         continue
     
     print(f"🔍 Analyzing: {file.filename}")
 
-    # 프롬프트 (CodeRabbit 스타일)
+    # 1-1. 전체 Diff 수집 (너무 길면 자름 - 토큰 제한 방지)
+    if len(all_diffs_context) < 30000:
+        all_diffs_context += f"\n\n--- File: {file.filename} ---\n{file.patch}"
+
+    # 1-2. 인라인 리뷰 프롬프트 (JSON 요청)
     prompt = f"""
     너는 구글, 애플 출신의 시니어 개발자야. 아래 제공되는 Git Diff 코드를 분석해서 코드 리뷰를 해줘.
     
@@ -55,7 +66,7 @@ for file in pr.get_files():
     [
       {{
         "line": <int: 이슈가 발견된 변경 후 파일의 라인 번호>,
-        "category": "<string: '이슈' | '제안' | '칭찬'>",
+        "category": "<string: '이슈' | '제안'>",
         "severity": "<string: 'Critical' | ''Major' | 'Minor' | 'Info'>",
         "message": "<string: 리뷰 내용 (한국어)>"
       }}
@@ -70,20 +81,17 @@ for file in pr.get_files():
     """
 
     try:
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
-        
-        if response_text.startswith("```json"):
-            response_text = response_text[7:-3]
-        elif response_text.startswith("```"):
-            response_text = response_text[3:-3]
+        response = model_json.generate_content(prompt)
+        # JSON 파싱 및 예외처리
+        text = response.text.strip()
+        if text.startswith("```json"): text = text[7:-3]
+        elif text.startswith("```"): text = text[3:-3]
             
-        comments_data = json.loads(response_text)
+        comments_data = json.loads(text)
 
         for item in comments_data:
             icon = "📝"
             if item['category'] == '이슈': icon = "⚠️"
-            elif item['category'] == '칭찬': icon = "🙌"
             elif item['category'] == '제안': icon = "💡"
 
             severity_icon = "⚪️"
@@ -103,10 +111,12 @@ for file in pr.get_files():
         print(f"⚠️ {file.filename} 처리 중 에러: {e}")
         continue
 
-# 4. 리뷰 등록
+# ------------------------------------------------------------------
+# 단계 2: 인라인 리뷰 등록 (CodeRabbit 스타일)
+# ------------------------------------------------------------------
 if review_comments:
     try:
-        print(f"📨 총 {len(review_comments)}개의 코멘트를 등록합니다...")
+        print(f"📨 {len(review_comments)}개의 인라인 코멘트 등록 중...")
         pr.create_review(
             commit=last_commit,
             body="## 🤖 Gemini AI Code Review\n리뷰가 도착했습니다! 코드를 확인해주세요.",
@@ -114,8 +124,55 @@ if review_comments:
             comments=review_comments
         )
         print("✅ 인라인 리뷰 등록 완료!")
-        
     except Exception as e:
         print(f"❌ 리뷰 등록 실패: {e}")
-else:
-    print("✅ 발견된 이슈가 없습니다.")
+        
+# ------------------------------------------------------------------
+# 단계 3: PR 본문(Description) 업데이트 (요약 및 주요 변경점)
+# ------------------------------------------------------------------
+print("📝 전체 변경 사항 요약 중...")
+
+summary_prompt = f"""
+너는 테크 리드야. 아래 제공된 전체 코드 변경 사항(Diff 모음)을 보고 PR 설명을 작성해 줘.
+반드시 **한국어**로 작성해.
+
+**요청 사항:**
+1. **📌 3줄 요약:** 전체 변경 내용을 3줄 이내로 핵심만 요약해.
+2. **🔍 주요 변경점:** 변경된 내용을 기능 단위로 글머리 기호(Bullet points)로 정리해.
+3. 기술적인 내용은 정확하게, 어조는 정중하게.
+
+--- Diff Context (Truncated) ---
+{all_diffs_context[:30000]}
+"""
+
+try:
+    summary_response = model_text.generate_content(summary_prompt)
+    summary_text = summary_response.text.strip()
+
+    # AI 영역 표시 마커 (이 주석 사이의 내용만 AI가 업데이트함)
+    marker_start = ""
+    marker_end = ""
+
+    current_body = pr.body if pr.body else ""
+    
+    # 마커로 감싼 새로운 AI 컨텐츠 생성
+    new_ai_section = f"{marker_start}\n## 🤖 AI 요약\n\n{summary_text}\n{marker_end}"
+
+    if marker_start in current_body and marker_end in current_body:
+        # 이미 AI 요약이 있다면, 해당 부분만 교체 (정규식 없이 단순 문자열 처리)
+        start_idx = current_body.find(marker_start)
+        end_idx = current_body.find(marker_end) + len(marker_end)
+        
+        # 기존 앞부분 + 새 AI 요약 + 기존 뒷부분
+        final_body = current_body[:start_idx] + new_ai_section + current_body[end_idx:]
+    else:
+        # AI 요약이 없다면, 본문 맨 위에 추가 (또는 맨 아래)
+        # 보통 요약은 맨 위가 좋으므로 맨 위에 배치
+        final_body = f"{new_ai_section}\n\n{current_body}"
+
+    # PR 업데이트
+    pr.edit(body=final_body)
+    print("✅ PR 본문(Description) 업데이트 완료!")
+
+except Exception as e:
+    print(f"❌ PR 요약 생성/업데이트 실패: {e}")
