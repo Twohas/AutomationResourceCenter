@@ -7,9 +7,11 @@ from github import Github, Auth
 # 1. 설정값 가져오기
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 github_token = os.getenv("GITHUB_TOKEN")
-repo_name = os.getenv("GITHUB_REPOSITORY")
 pr_number_str = os.getenv("PR_NUMBER")
+repo_name = os.getenv("GITHUB_REPOSITORY")
 webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
+
+gemini_model = "gemini-2.5-flash"
 
 # 유효성 검사
 if not gemini_api_key:
@@ -22,8 +24,8 @@ if not pr_number_str:
 # 2. Gemini 설정 (Gemini 1.5 Flash 모델 사용)
 genai.configure(api_key=gemini_api_key)
 
-model_json = genai.GenerativeModel("gemini-2.5-flash", generation_config={"response_mime_type": "application/json"})
-model_text = genai.GenerativeModel("gemini-1.5-flash")
+model_json = genai.GenerativeModel(gemini_model, generation_config={"response_mime_type": "application/json"})
+model_text = genai.GenerativeModel(gemini_model)
 
 auth = Auth.Token(github_token)
 g = Github(auth=auth)
@@ -31,7 +33,7 @@ repo = g.get_repo(repo_name)
 pr = repo.get_pull(int(pr_number_str))
 last_commit = list(pr.get_commits())[-1]
 
-print("🚀 리뷰 시작 (Model: gemini-1.5-flash)")
+print(f"🚀 리뷰 시작 (Model: {gemini_model})")
 
 # 3. 변경된 파일별로 리뷰 데이터 수집
 review_comments = []
@@ -94,14 +96,14 @@ for file in pr.get_files():
         for item in comments_data:
             issue_count += 1
 
-            icon = "📝"
-            if item['category'] == '이슈': icon = "⚠️"
+            if item['category'] == '이슈':   icon = "⚠️"
             elif item['category'] == '제안': icon = "💡"
+            else:                           icon = "📝"
 
-            severity_icon = "⚪️"
-            if item['severity'] == 'Critical': severity_icon = "🔥" # Critical은 불꽃 아이콘
-            elif item['severity'] == 'Major': severity_icon = "🔴"
-            elif item['severity'] == 'Minor': severity_icon = "🟡"
+            if item['severity'] == 'Critical':  severity_icon = "🔥" # Critical은 불꽃 아이콘
+            elif item['severity'] == 'Major':   severity_icon = "🔴"
+            elif item['severity'] == 'Minor':   severity_icon = "🟡"
+            else:                               severity_icon = "⚪️"
 
             body = f"### {icon} {item['category']} | {severity_icon} {item['severity']}\n\n{item['message']}"
 
