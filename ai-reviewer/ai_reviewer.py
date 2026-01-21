@@ -9,6 +9,7 @@ gemini_api_key = os.getenv("GEMINI_API_KEY")
 github_token = os.getenv("GITHUB_TOKEN")
 repo_name = os.getenv("GITHUB_REPOSITORY")
 pr_number_str = os.getenv("PR_NUMBER")
+webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
 
 # 유효성 검사
 if not gemini_api_key:
@@ -35,6 +36,7 @@ print("🚀 리뷰 시작 (Model: gemini-1.5-flash)")
 # 3. 변경된 파일별로 리뷰 데이터 수집
 review_comments = []
 all_diffs_context = "" # 요약을 위해 전체 코드를 모을 변수
+issue_count = 0
 
 # ------------------------------------------------------------------
 # 단계 1: 파일별 루프 (인라인 리뷰 수집 + 전체 Diff 모으기)
@@ -90,6 +92,8 @@ for file in pr.get_files():
         comments_data = json.loads(text)
 
         for item in comments_data:
+            issue_count += 1
+
             icon = "📝"
             if item['category'] == '이슈': icon = "⚠️"
             elif item['category'] == '제안': icon = "💡"
@@ -176,3 +180,45 @@ try:
 
 except Exception as e:
     print(f"❌ PR 요약 생성/업데이트 실패: {e}")
+
+# ------------------------------------------------------------------
+# 단계 4: 디스코드 알림 전송
+# ------------------------------------------------------------------
+if webhook_url:
+    print("🔔 디스코드 알림 전송 중...")
+    try:
+        # 메시지 내용 구성 (Embed 사용)
+        payload = {
+            "username": "Gemini Code Reviewer",
+            "avatar_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+            "embeds": [
+                {
+                    "title": f"🤖 AI 리뷰 완료: #{pr_number_str} {pr.title}",
+                    "url": pr.html_url,
+                    "color": 5814783, # 보라색 계열
+                    "fields": [
+                        {
+                            "name": "📊 분석 결과",
+                            "value": f"발견된 코멘트: **{issue_count}개**",
+                            "inline": True
+                        },
+                        {
+                            "name": "📝 3줄 요약",
+                            "value": summary_text[:1000], # 너무 길면 잘림 방지
+                            "inline": False
+                        }
+                    ],
+                    "footer": {
+                        "text": f"Repo: {repo_name} • Requested by {pr.user.login}"
+                    }
+                }
+            ]
+        }
+        
+        requests.post(webhook_url, json=payload)
+        print("✅ 디스코드 알림 전송 완료!")
+        
+    except Exception as e:
+        print(f"❌ 디스코드 전송 실패: {e}")
+else:
+    print("ℹ️ DISCORD_WEBHOOK_URL이 설정되지 않아 알림을 건너뜁니다.")

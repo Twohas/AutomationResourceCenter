@@ -10,6 +10,9 @@ inputs:
   pr_number:       # 외부에서 받아올 입력값 3
     description: 'PR Number'
     required: true
+  discord_webhook_url:
+    description: 'Discord Webhook URL'
+    required: false
 
 runs:
   using: "composite" # 이것이 핵심!
@@ -20,7 +23,7 @@ runs:
         python-version: '3.9'
     
     - name: Install Dependencies
-      run: pip install google-generativeai PyGithub
+      run: pip install google-generativeai PyGithub requests
       shell: bash # composite에서는 shell 명시 필수
 
     # 파이썬 스크립트 실행 (입력받은 값을 환경변수로 넘김)
@@ -32,3 +35,4 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         PR_NUMBER: ${{ inputs.pr_number }}
         GITHUB_REPOSITORY: ${{ github.repository }}
+        DISCORD_WEBHOOK_URL: ${{ inputs.discord_webhook_url }}
