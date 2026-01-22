@@ -61,8 +61,7 @@ for file in pr.get_files():
     
     **목표:**
     1. 버그, 성능 이슈, 스타일 가이드 위반, 안티 패턴을 찾아내.
-    2. 칭찬할 점이 있다면 칭찬해.
-    3. 중요하지 않은 변경사항은 무시해. (리뷰 노이즈 최소화)
+    2. 중요하지 않은 변경사항은 무시해. (리뷰 노이즈 최소화)
 
     **출력 형식 (JSON List):**
     반드시 아래 JSON 구조의 리스트로만 응답해. 마크다운 코드블럭을 쓰지 말고 순수 JSON만 출력해.
@@ -71,14 +70,14 @@ for file in pr.get_files():
       {{
         "line": <int: 이슈가 발견된 변경 후 파일의 라인 번호>,
         "category": "<string: '이슈' | '제안'>",
-        "severity": "<string: 'Critical' | ''Major' | 'Minor' | 'Info'>",
+        "severity": "<string: 'Critical' | ''Major' | 'Minor'>",
         "message": "<string: 리뷰 내용 (한국어)>"
       }}
     ]
 
     **코멘트 스타일 가이드:**
     - CodeRabbit 스타일을 따라해.
-    - 친절하지만 명확하게 설명해.
+    - 친절하지만 명확하고 간결하게 설명해.
 
     --- Git Diff ---
     {file.patch}
@@ -97,13 +96,11 @@ for file in pr.get_files():
             issue_count += 1
 
             if item['category'] == '이슈':   icon = "⚠️"
-            elif item['category'] == '제안': icon = "💡"
-            else:                           icon = "📝"
+            else:                           icon = "💡"
 
             if item['severity'] == 'Critical':  severity_icon = "🔥" # Critical은 불꽃 아이콘
             elif item['severity'] == 'Major':   severity_icon = "🔴"
-            elif item['severity'] == 'Minor':   severity_icon = "🟡"
-            else:                               severity_icon = "⚪️"
+            else:                               severity_icon = "🟡"
 
             body = f"### {icon} {item['category']} | {severity_icon} {item['severity']}\n\n{item['message']}"
 
@@ -203,11 +200,6 @@ if webhook_url:
                             "name": "📊 분석 결과",
                             "value": f"발견된 코멘트: **{issue_count}개**",
                             "inline": True
-                        },
-                        {
-                            "name": "📝 3줄 요약",
-                            "value": summary_text[:1000], # 너무 길면 잘림 방지
-                            "inline": False
                         }
                     ],
                     "footer": {
