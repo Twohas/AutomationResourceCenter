@@ -11,7 +11,7 @@ pr_number_str = os.getenv("PR_NUMBER")
 repo_name = os.getenv("GITHUB_REPOSITORY")
 webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
 
-gemini_model = "gemini-2.5-flash"
+gemini_model = "gemini-2.5-flash-lite"
 
 # 유효성 검사
 if not gemini_api_key:
