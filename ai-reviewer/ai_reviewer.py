@@ -7,7 +7,7 @@ from openai import OpenAI  # google.generativeai 대신 사용
 # 1. 설정값 가져오기
 # 내 LLM 설정 (OpenAI 호환 API)
 llm_api_key = os.getenv("LLM_API_KEY", "EMPTY") # 로컬 모델은 키가 필요 없는 경우가 많음
-llm_base_url = "http://host.docker.internal:11434/v1"      # 예: "http://localhost:11434/v1" (Ollama)
+llm_base_url = "http://localhost:11434/v1"      # 예: "http://localhost:11434/v1" (Ollama)
 llm_model_name = "deepseek-r1:8b"    # 예: "llama3", "deepseek-coder", "gpt-4"
 
 github_token = os.getenv("GITHUB_TOKEN")
