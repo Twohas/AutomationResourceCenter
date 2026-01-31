@@ -1,13 +1,17 @@
-name: 'Gemini AI Code Reviewer'
-description: 'Review code using Gemini AI'
+name: 'Custom LLM Code Reviewer'
+description: 'Review code using OpenAI-compatible LLMs (Ollama, vLLM, DeepSeek, etc.)'
 inputs:
-  gemini_api_key:  # 외부에서 받아올 입력값 1
-    description: 'Google Gemini API Key'
-    required: true
-  github_token:    # 외부에서 받아올 입력값 2
+  # 변경 1: Gemini Key 대신 LLM 접속 정보 3가지를 입력받음
+  llm_api_key:
+    description: 'LLM API Key (Optional for local models)'
+    required: false
+    default: 'EMPTY'
+    
+  # 기존 유지
+  github_token:
     description: 'GitHub Token'
     required: true
-  pr_number:       # 외부에서 받아올 입력값 3
+  pr_number:
     description: 'PR Number'
     required: true
   discord_webhook_url:
@@ -15,23 +19,24 @@ inputs:
     required: false
 
 runs:
-  using: "composite" # 이것이 핵심!
+  using: "composite"
   steps:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
     
+    # 변경 2: google-generativeai 제거 -> openai 추가
     - name: Install Dependencies
-      run: pip install google-generativeai PyGithub requests
-      shell: bash # composite에서는 shell 명시 필수
+      run: pip install openai PyGithub requests
+      shell: bash
 
-    # 파이썬 스크립트 실행 (입력받은 값을 환경변수로 넘김)
+    # 변경 3: 환경 변수 매핑 변경 (GEMINI_API_KEY 삭제 -> LLM_* 추가)
     - name: Run Review Script
       run: python ${{ github.action_path }}/ai_reviewer.py
       shell: bash
       env:
-        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        LLM_API_KEY: ${{ inputs.llm_api_key }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         PR_NUMBER: ${{ inputs.pr_number }}
         GITHUB_REPOSITORY: ${{ github.repository }}
