@@ -21,18 +21,22 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # 변경 2: google-generativeai 제거 -> openai 추가
-    - name: Install Dependencies
-      run: python3 -m pip install openai PyGithub requests
-      shell: bash
-
-    # 변경 3: 환경 변수 매핑 변경 (GEMINI_API_KEY 삭제 -> LLM_* 추가)
-    - name: Run Review Script
-      run: python ${{ github.action_path }}/ai_reviewer.py
+    - name: Setup and Run AI Reviewer
       shell: bash
       env:
-        LLM_API_KEY: ${{ inputs.llm_api_key }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         PR_NUMBER: ${{ inputs.pr_number }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         DISCORD_WEBHOOK_URL: ${{ inputs.discord_webhook_url }}
+      run: |
+        # 1. 가상 환경 생성 (.venv 폴더)
+        python3 -m venv .venv
+        
+        # 2. 가상 환경 활성화
+        source .venv/bin/activate
+        
+        # 3. 패키지 설치 (이제 에러 안 남)
+        pip install openai PyGithub requests
+        
+        # 4. 파이썬 스크립트 실행
+        python ${{ github.action_path }}/ai_reviewer.py
