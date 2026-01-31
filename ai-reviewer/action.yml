@@ -23,7 +23,7 @@ runs:
   steps:
     # 변경 2: google-generativeai 제거 -> openai 추가
     - name: Install Dependencies
-      run: pip install openai PyGithub requests
+      run: python3 -m pip install openai PyGithub requests
       shell: bash
 
     # 변경 3: 환경 변수 매핑 변경 (GEMINI_API_KEY 삭제 -> LLM_* 추가)
