@@ -39,4 +39,4 @@ runs:
         pip install openai PyGithub requests
         
         # 4. 파이썬 스크립트 실행
-        python ${{ github.action_path }}/ai_reviewer.py
+        python -u ${{ github.action_path }}/ai_reviewer.py
