@@ -45,8 +45,15 @@ issue_count = 0
 # ------------------------------------------------------------------
 # 단계 1: 파일별 루프
 # ------------------------------------------------------------------
+IGNORED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.svg', '.json', '.lock', '.pbxproj', '.xib', '.storyboard']
 for file in pr.get_files():
+    # 1. 삭제된 파일 패스
     if file.status == "removed" or file.patch is None:
+        continue
+
+    # 2. 중요하지 않은 확장자 패스
+    if any(file.filename.endswith(ext) for ext in IGNORED_EXTENSIONS):
+        print(f"🚫 Skipping (Ignored type): {file.filename}")
         continue
     
     print(f"🔍 Analyzing: {file.filename}")
