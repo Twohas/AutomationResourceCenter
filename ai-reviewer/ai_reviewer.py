@@ -58,6 +58,8 @@ for file in pr.get_files():
     
     print(f"🔍 Analyzing: {file.filename}")
 
+    valid_lines_in_diff = get_valid_lines(file.patch)
+
     if len(all_diffs_context) < 30000:
         all_diffs_context += f"\n\n--- File: {file.filename} ---\n{file.patch}"
 
@@ -108,19 +110,33 @@ for file in pr.get_files():
             
         comments_data = json.loads(text)
 
-        # 리스트가 아니면 리스트로 감쌈 (모델 환각 대비)
         if isinstance(comments_data, dict):
             comments_data = [comments_data]
 
+        # ✅ [위치 2-2] 기존의 for item loop를 아래 코드로 통째로 교체하세요!
         for item in comments_data:
-            # 필수 키가 있는지 확인
+            # 필수 키 확인
             if 'line' not in item or 'message' not in item:
                 continue
-
-            issue_count += 1
-            icon = "⚠️" if item.get('category') == '이슈' else "💡"
             
+            # 라인 번호 정수 변환
+            try:
+                line_num = int(item['line'])
+            except ValueError:
+                continue # 숫자가 아니면 스킵
+
+            # 🚨 핵심 수정: Diff 범위 밖인지 검사 (422 에러 방지)
+            if line_num not in valid_lines_in_diff:
+                print(f"🚫 스킵: 라인 {line_num}은 Diff 범위 밖입니다. (AI가 변경되지 않은 줄을 지적함)")
+                continue
+
+            # 여기까지 통과하면 유효한 이슈임
+            issue_count += 1
+            
+            # 아이콘 및 심각도 설정
+            icon = "⚠️" if item.get('category') == '이슈' else "💡"
             severity = item.get('severity', 'Minor')
+            
             if severity == 'Critical': severity_icon = "🔥"
             elif severity == 'Major':  severity_icon = "🔴"
             else:                      severity_icon = "🟡"
@@ -129,7 +145,7 @@ for file in pr.get_files():
 
             review_comments.append({
                 "path": file.filename,
-                "line": int(item['line']),
+                "line": line_num,
                 "body": body
             })
 
@@ -236,3 +252,29 @@ if webhook_url:
         print("✅ 디스코드 알림 전송 완료!")
     except Exception as e:
         print(f"❌ 디스코드 전송 실패: {e}")
+
+def get_valid_lines(patch):
+    """
+    Git Patch 텍스트를 파싱하여 코멘트 가능한(변경된) 라인 번호들의 집합(Set)을 반환합니다.
+    """
+    valid_lines = set()
+    current_line_num = 0
+    
+    for line in patch.split('\n'):
+        # 1. 헝크 헤더 파싱 (예: @@ -10,5 +20,7 @@) -> 새 파일의 시작 라인(+20) 추출
+        if line.startswith('@@'):
+            match = re.search(r'\+(\d+)', line)
+            if match:
+                current_line_num = int(match.group(1))
+            continue # 헤더 줄 자체는 코멘트 대상 아님
+
+        # 2. 변경되지 않은 줄(공백)이나 추가된 줄(+)은 유효한 라인
+        if line.startswith(' ') or line.startswith('+'):
+            valid_lines.add(current_line_num)
+            current_line_num += 1
+            
+        # 3. 삭제된 줄(-)은 새 파일에 없으므로 라인 번호 증가 없음
+        elif line.startswith('-'):
+            pass
+            
+    return valid_lines
