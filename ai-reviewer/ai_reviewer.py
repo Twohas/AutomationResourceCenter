@@ -106,22 +106,26 @@ def analyze_file(client, file):
     valid_lines = get_valid_lines(file.patch)
     
     # 3. 프롬프트 구성
-    system_prompt = "You are a code reviewer. You must output only valid JSON."
+    system_prompt = "You are a code reviewer. You must output only valid JSON. Responses must be in Korean."
     user_prompt = f"""
     너는 구글, 애플 출신의 시니어 개발자야. 아래 제공되는 Git Diff 코드를 분석해서 코드 리뷰를 해줘.
-    파일명: {file.filename}
-    목표: 버그, 성능 이슈, 스타일 가이드 위반, 안티 패턴 발견. 중요하지 않은 건 무시.
-    
-    출력 형식 (JSON List Only):
+    **파일명:** {file.filename}
+    **목표:**
+    1. 버그, 성능 이슈, 스타일 가이드 위반, 안티 패턴을 찾아내.
+    2. 중요하지 않은 변경사항은 무시해. (리뷰 노이즈 최소화)
+
+    **출력 형식 (JSON List):**
+    반드시 아래 JSON 구조의 리스트로만 응답해. 설명이나 마크다운 코드블럭(```json) 없이 순수 JSON 텍스트만 출력해.
+
     [
-      {{
-        "line": <int>,
+    {{
+        "line": <int: 이슈가 발견된 변경 후 파일의 라인 번호>,
         "category": "<string: '이슈' | '제안'>",
         "severity": "<string: 'Critical' | 'Major' | 'Minor'>",
-        "message": "<string: 한국어>"
-      }}
+        "message": "<string: 리뷰 내용 (한국어)>"
+    }}
     ]
-    
+
     --- Git Diff ---
     {file.patch}
     """
