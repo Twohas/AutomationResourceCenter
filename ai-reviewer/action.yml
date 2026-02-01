@@ -1,13 +1,10 @@
 name: 'Custom LLM Code Reviewer'
-description: 'Review code using OpenAI-compatible LLMs (Ollama, vLLM, DeepSeek, etc.)'
+description: 'Review code using Google Gemini'
 inputs:
-  # 변경 1: Gemini Key 대신 LLM 접속 정보 3가지를 입력받음
-  llm_api_key:
-    description: 'LLM API Key (Optional for local models)'
-    required: false
-    default: 'EMPTY'
+  gemini_api_key:
+    description: 'Google Gemini API Key'
+    required: true
     
-  # 기존 유지
   github_token:
     description: 'GitHub Token'
     required: true
@@ -24,19 +21,16 @@ runs:
     - name: Setup and Run AI Reviewer
       shell: bash
       env:
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         PR_NUMBER: ${{ inputs.pr_number }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         DISCORD_WEBHOOK_URL: ${{ inputs.discord_webhook_url }}
       run: |
-        # 1. 가상 환경 생성 (.venv 폴더)
         python3 -m venv .venv
-        
-        # 2. 가상 환경 활성화
         source .venv/bin/activate
         
-        # 3. 패키지 설치 (이제 에러 안 남)
-        pip install openai PyGithub requests
+        # ✅ 변경: openai 제거 -> google-generativeai 설치
+        pip install google-generativeai PyGithub requests
         
-        # 4. 파이썬 스크립트 실행
         python -u ${{ github.action_path }}/ai_reviewer.py
