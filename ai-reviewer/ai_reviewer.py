@@ -15,6 +15,32 @@ pr_number_str = os.getenv("PR_NUMBER")
 repo_name = os.getenv("GITHUB_REPOSITORY")
 webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
 
+def get_valid_lines(patch):
+    """
+    Git Patch 텍스트를 파싱하여 코멘트 가능한(변경된) 라인 번호들의 집합(Set)을 반환합니다.
+    """
+    valid_lines = set()
+    current_line_num = 0
+    
+    for line in patch.split('\n'):
+        # 1. 헝크 헤더 파싱 (예: @@ -10,5 +20,7 @@) -> 새 파일의 시작 라인(+20) 추출
+        if line.startswith('@@'):
+            match = re.search(r'\+(\d+)', line)
+            if match:
+                current_line_num = int(match.group(1))
+            continue # 헤더 줄 자체는 코멘트 대상 아님
+
+        # 2. 변경되지 않은 줄(공백)이나 추가된 줄(+)은 유효한 라인
+        if line.startswith(' ') or line.startswith('+'):
+            valid_lines.add(current_line_num)
+            current_line_num += 1
+            
+        # 3. 삭제된 줄(-)은 새 파일에 없으므로 라인 번호 증가 없음
+        elif line.startswith('-'):
+            pass
+            
+    return valid_lines
+
 # 유효성 검사
 if not llm_base_url or not llm_model_name:
     print("❌ Error: LLM_BASE_URL or LLM_MODEL_NAME is missing")
@@ -252,29 +278,3 @@ if webhook_url:
         print("✅ 디스코드 알림 전송 완료!")
     except Exception as e:
         print(f"❌ 디스코드 전송 실패: {e}")
-
-def get_valid_lines(patch):
-    """
-    Git Patch 텍스트를 파싱하여 코멘트 가능한(변경된) 라인 번호들의 집합(Set)을 반환합니다.
-    """
-    valid_lines = set()
-    current_line_num = 0
-    
-    for line in patch.split('\n'):
-        # 1. 헝크 헤더 파싱 (예: @@ -10,5 +20,7 @@) -> 새 파일의 시작 라인(+20) 추출
-        if line.startswith('@@'):
-            match = re.search(r'\+(\d+)', line)
-            if match:
-                current_line_num = int(match.group(1))
-            continue # 헤더 줄 자체는 코멘트 대상 아님
-
-        # 2. 변경되지 않은 줄(공백)이나 추가된 줄(+)은 유효한 라인
-        if line.startswith(' ') or line.startswith('+'):
-            valid_lines.add(current_line_num)
-            current_line_num += 1
-            
-        # 3. 삭제된 줄(-)은 새 파일에 없으므로 라인 번호 증가 없음
-        elif line.startswith('-'):
-            pass
-            
-    return valid_lines
